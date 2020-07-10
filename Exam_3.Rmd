@@ -1,0 +1,299 @@
+---
+title: "Exam 3"
+author: "Connor_Hanna"
+date: "7/9/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Question 1
+
+"Clear the environment"
+
+Done using GUI
+
+## Question 2
+
+"Use the tidycensus package to"
+
+```{r}
+library(tidycensus)
+library(tidyverse)
+library(dplyr)
+```
+
+### A)
+
+"find the inequality Gini index variable explained
+on the last exam"
+
+```{r}
+vlist <- load_variables(2015, "acs5", cache = TRUE)
+View(vlist)
+```
+
+### B)
+
+"import in the state-level inequality Gini estimates for 2010 and 2015 in the five-year American Community Survey as a single panel dataset"
+
+```{r}
+census_api_key("3ad99665ba1cb9142566342541aa52e1cd7ac642", overwrite = FALSE, install = FALSE)
+
+inequality_panel_2010 <- get_acs(geography = "state", variables = "B19083_001", year = 2010)
+
+inequality_panel_2015 <- get_acs(geography = "state", variables = "B19083_001", year = 2015)
+
+inequality_panel_2010$year <- 2010
+
+inequality_panel_2015$year <- 2015
+
+inequality_panel <- bind_rows(inequality_panel_2010, inequality_panel_2015)
+```
+
+### C) 
+
+"rename estimate as gini in your final data frame, which you should call inequality_panel"
+
+Dataframe was named appropriately when called, leaving the variable renaming. 
+
+```{r}
+inequality_panel <- inequality_panel %>% rename(gini = estimate)
+```
+
+### D)
+
+"rename NAME to state as well"
+
+```{r}
+inequality_panel <- inequality_panel %>% rename(state = NAME)
+```
+
+### E)
+
+"ensure that inequality_panel has a year variable so we can distinguish between the 2010 and 2015 gini index data"
+
+```{r}
+View(inequality_panel)
+```
+
+### F)
+
+"as a final step, run the head() command so we can get a quick peak at inequality_panel"
+
+```{r}
+head(inequality_panel)
+```
+
+## 3)
+
+"Reshape the inequality_panel wide, such that the gini values for 2010 and 2015 have their own columns. Also, please keep both the state and GEOID variables. Call the resulting data frame inequality_wide. After you are done with the reshape, run the head() command so we can get a quick peak at the data."
+
+
+```{r}
+library(tidyr)
+inequality_wide <- spread(inequality_panel, year, gini)
+head(inequality_wide)
+```
+
+## 4)
+
+"Reshape inequality_wide to long format. Once you are done, run the head() command so we can get a quick peak at the data."
+
+```{r}
+inequality_long <- gather(inequality_wide, key = "year", value = "gini", c(5, 6), na.rm = TRUE)
+head(inequality_long)
+```
+
+## 5)
+
+"Show with some R code that inequality_panel and inequality_long have the same number of observations"
+
+```{r}
+count_panel <- count(inequality_panel)
+count_long <- count(inequality_long)
+count_long == count_panel
+```
+
+## 6)
+
+"Collapse the inequality_long data frame by state, such that you obtain a single mean gini score for each state for the years 2010 and 2015. When collapsing, also keep both the GEOID and state variables. Call your resulting data frame inequality_collapsed"
+
+```{r}
+inequality_collapsed <- 
+  inequality_long %>%
+    group_by(state, GEOID) %>%
+    summarize(mean_gini = mean(gini))
+head(inequality_collapsed)
+```
+
+## 7)
+
+"Produce a map of the United States that colors in the state polygons by their mean gini scores from inequality_collapsed, using the WGS84 coordinate system. When doing so, use the viridis color scheme."
+
+```{r}
+library(maps)
+library(mapdata)
+library(stringr)
+library(ggmap)
+library(ggplot2)
+library(stringr)
+
+states <- map_data("state")
+head(states)
+states <- rename(states, "state" = "region")
+
+inequality_collapsed_mapping <- inequality_collapsed
+inequality_collapsed_mapping$state = tolower(inequality_collapsed_mapping$state)
+
+states_gini <- left_join(states, inequality_collapsed_mapping, by = "state", copy = TRUE)
+head(states_gini)
+
+library(viridis)
+ggplot(data = states_gini) +
+    scale_fill_gradientn(colors = viridis(n = 15537)) +
+    geom_polygon(aes(x = long, y = lat, group = state, fill = mean_gini)) + 
+  coord_fixed(1.3) 
+```
+
+## 8)
+
+"Use the WDI package to import in data on Gross Domestic Product (GDP) in current US dollars. When doing so, include all countries and only the years 2006 and 2007. Rename your GDP variable to gdp_current."
+
+```{r}
+library(WDI)
+library(dplyr)
+
+WDI_import <- WDI(country = "all", indicator = "6.0.GDP_current", start = 2006, end = 2007)
+WDI_import <- rename(WDI_import, "gdp_current" = "6.0.GDP_current")
+```
+
+## 9)
+
+"Deflate gdp_current to constant 2010 or 2015 US dollars, and call the new variable gdp_deflated. In words, also tell us the base year that you picked and why. At the end, run a head() command to prove that everything works"
+
+```{r, eval=FALSE}
+library(priceR)
+
+WDI_import$gdp_2010 <- NA
+WDI_import$matching <- FALSE
+
+for (row in 1:nrow(WDI_import)){
+  country <- WDI_import$iso2c
+  if (country_input_type(country, WDI_import) == "")
+  WDI_import$matching <- TRUE
+  }
+
+WDI_import <- subset(WDI_import, matching == TRUE)
+
+for (row in 1:nrow(WDI_import)){
+  
+  country <- WDI_import$iso2c
+  inflation_dataframe <- retrieve_inflation_data(country)
+  countries_dataframe <- show_countries()
+  
+  WDI_import$gdp_2010 <- adjust_for_inflation(WDI_import$gdp_current, 2020, country, to_date = 2010, inflation_dataframe = inflation_dataframe, countries_dataframe = countries_dataframe)
+  
+  }
+```
+
+After spending an ungodly long time trying and failing to build a loop get the country codes to align using various methods and then apply inflation indices independently to each country, I gave up. The WDI data is labeled ISO2C but appears to feature ISO3C codes, and the inflation adjuster has refused to parse the country names.
+
+## 10) 
+
+"In a Shiny app, what are the three main components and their subcomponents?"
+
+A Shiny app is composed of a User Interface, a Server, and a Shinyapp function that synthesizes them into a finished application. 
+
+## 11) 
+
+"Pull this .pdf file from Mike Denly’s webpage. It is a report on governance in Armenia that Mike Denly and Mike Findley prepared for the US Agency for International Development (USAID)."
+
+```{r}
+library(tidyverse)
+library(rvest)
+library(stringr)
+
+url <- "https://pdf.usaid.gov/pdf_docs/PA00TNMG.pdf"
+destfile <- "C:/Users/Connor/Documents/School/2020 SS/Data Science/Exam 3/usaid_pdf"
+
+USAID_pdf <- download.file(url, destfile)
+```
+
+## 12
+
+"Convert the text pulled from this .pdf file to a data frame, using the stringsAsFactors=FALSE option. Call the data frame armeniatext"
+
+```{r, eval=FALSE}
+library(purrr)
+library(pdftools)
+
+USAID_text <- pdf_text("C:/Users/Connor/Documents/School/2020 SS/Data Science/Exam 3/usaid_pdf") 
+
+armeniatext <- data.frame((USAID_text),
+                stringsAsFactors = FALSE)
+```
+
+I can't seem to figure out what's broken with the package. The code should work and pdftools is clearly finding the PDF, but it looks like it's unable to process it. I tried getting other parts of the pdftools package to parse it to no avail. 
+
+## 13)
+
+"Tokenize the data by word and then remove stop words"
+
+```{r, eval=FALSE}
+library(tokenizers)
+library(stopwords)
+
+armeniatext <- tokenize_words(armeniatext, stopwords = stopwords::("en"))
+```
+
+## 14)
+
+"Figure out the top 5 most used word in the report"
+
+```{r, eval=FALSE}
+library(tidytext)
+
+armeniawords <- unnest_tokens(word, armeniatext)
+
+armeniawords %>% 
+  count(word, sort = TRUE)
+
+armeniatext %>%
+  count(word, sort = TRUE)
+```
+
+I can't really see what I'm doing because I can't debug my code, but this looks about right. I included both datasets in case the previous function already unnested the words in addition to tokenizing them. 
+
+## 15) 
+
+"Load the Billboard Hot 100 webpage, which we explored in the course modules. Name the list object: hot100exam"
+
+```{r}
+library(rvest)
+
+hot100exam <- read_html("https://www.billboard.com/charts/hot-100")
+```
+
+read_html fails to read most of the text and I'm not certain why. readLines reads the entire HTML text of the webpage, but the output returns an error when parsed by html_nodes. I'm leaving read_html in the code because I couldn't get html_nodes to parse useful information either way.
+
+## 16)
+
+"Use rvest to obtain identify all of the nodes in the webpage"
+
+```{r, eval=FALSE}
+library(rvest)
+
+html_nodes(hot100exam)
+```
+
+## 17)
+
+"Use Google Chrome developer to identify the necessary tags and pull the data on Rank, Artist, Title, and Last Week"
+
+Without the ability to debug the code in #16, I'm not sure if I can actually complete this.
+
